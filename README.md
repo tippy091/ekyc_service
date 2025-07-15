@@ -4,4 +4,7 @@
 
 Fine-tuned for Vietnamese ID Card (Old and New Version within Chip)
 
+
+1. Face Recognition
+2. Liveness Detection (Facial Orientation && Blink Detector)
 @HDCapital Project
