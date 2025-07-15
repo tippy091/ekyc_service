@@ -1,0 +1,7 @@
+services:
+  py-ekyc-service:
+    build: .
+    ports:
+      - '8000:8000'
+    image: py-ekyc-service:latest
+    container_name: py-ekyc-service
