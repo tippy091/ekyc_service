@@ -1,4 +1,4 @@
-# python-ekyc-service
+# EKYC PROJECT
 
 ## Getting started
 
