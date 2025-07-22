@@ -10981,3 +10981,51 @@ pymongo.errors.ServerSelectionTimeoutError: 10.10.0.42:27021: [Errno 65] No rout
 2025-07-15 10:00:27,082 - werkzeug:97 - INFO - [33mPress CTRL+C to quit[0m
 2025-07-15 10:00:35,552 - werkzeug:97 - INFO - 127.0.0.1 - - [15/Jul/2025 10:00:35] "POST /api/ekyc-process HTTP/1.1" 200 -
 2025-07-15 10:01:53,357 - root:70 - INFO - Flask development server stopped.
+2025-07-22 19:52:59,779 - app:50 - INFO - Starting app initialization with env=dev, debug=False
+2025-07-22 19:52:59,779 - app:50 - INFO - Starting app initialization with env=dev, debug=False
+2025-07-22 19:52:59,780 - app:60 - INFO - API Blueprint registered.
+2025-07-22 19:52:59,780 - app:60 - INFO - API Blueprint registered.
+2025-07-22 19:52:59,780 - app:62 - INFO - App initialized successfully: env=dev, debug=False
+2025-07-22 19:52:59,780 - app:62 - INFO - App initialized successfully: env=dev, debug=False
+2025-07-22 19:52:59,797 - werkzeug:97 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.1.65:8000
+2025-07-22 19:52:59,797 - werkzeug:97 - INFO - [33mPress CTRL+C to quit[0m
+2025-07-22 19:53:30,078 - root:70 - INFO - Flask development server stopped.
+2025-07-22 19:57:02,066 - app:50 - INFO - Starting app initialization with env=dev, debug=False
+2025-07-22 19:57:02,066 - app:50 - INFO - Starting app initialization with env=dev, debug=False
+2025-07-22 19:57:02,066 - app:60 - INFO - API Blueprint registered.
+2025-07-22 19:57:02,066 - app:60 - INFO - API Blueprint registered.
+2025-07-22 19:57:02,066 - app:62 - INFO - App initialized successfully: env=dev, debug=False
+2025-07-22 19:57:02,066 - app:62 - INFO - App initialized successfully: env=dev, debug=False
+2025-07-22 19:57:02,081 - werkzeug:97 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.1.65:8000
+2025-07-22 19:57:02,081 - werkzeug:97 - INFO - [33mPress CTRL+C to quit[0m
+2025-07-22 19:59:39,478 - root:70 - INFO - Flask development server stopped.
+2025-07-22 20:02:52,637 - app:50 - INFO - Starting app initialization with env=dev, debug=False
+2025-07-22 20:02:52,637 - app:50 - INFO - Starting app initialization with env=dev, debug=False
+2025-07-22 20:02:52,637 - app:60 - INFO - API Blueprint registered.
+2025-07-22 20:02:52,637 - app:60 - INFO - API Blueprint registered.
+2025-07-22 20:02:52,637 - app:62 - INFO - App initialized successfully: env=dev, debug=False
+2025-07-22 20:02:52,637 - app:62 - INFO - App initialized successfully: env=dev, debug=False
+2025-07-22 20:02:52,654 - werkzeug:97 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.1.65:8000
+2025-07-22 20:02:52,654 - werkzeug:97 - INFO - [33mPress CTRL+C to quit[0m
+2025-07-22 20:03:21,841 - root:70 - INFO - Flask development server stopped.
+2025-07-22 20:11:49,629 - app:50 - INFO - Starting app initialization with env=dev, debug=False
+2025-07-22 20:11:49,629 - app:50 - INFO - Starting app initialization with env=dev, debug=False
+2025-07-22 20:11:49,630 - app:60 - INFO - API Blueprint registered.
+2025-07-22 20:11:49,630 - app:60 - INFO - API Blueprint registered.
+2025-07-22 20:11:49,630 - app:62 - INFO - App initialized successfully: env=dev, debug=False
+2025-07-22 20:11:49,630 - app:62 - INFO - App initialized successfully: env=dev, debug=False
+2025-07-22 20:11:49,642 - werkzeug:97 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8000
+ * Running on http://192.168.1.65:8000
+2025-07-22 20:11:49,642 - werkzeug:97 - INFO - [33mPress CTRL+C to quit[0m
+2025-07-22 20:11:51,514 - root:70 - INFO - Flask development server stopped.

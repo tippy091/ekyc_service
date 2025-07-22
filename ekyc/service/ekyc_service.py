@@ -1,35 +1,30 @@
 import shutil
 import yolov5
-import time
-from PIL import Image
-import numpy as np
-import ultralytics
-from facenet_pytorch import MTCNN
-from ekyc.service.face_check_service.face_matching_service import FaceVerifier
-from ekyc.service.face_check_service.blink_detection import BlinkDetector
-from ekyc.service.face_check_service.face_orientation import FaceOrientationDetector
-from ekyc.config.s3.s3_client import S3Client
-from ekyc.repository.user_repository import UserRepository
-from vietocr.tool.config import Cfg
-from vietocr.tool.predictor import Predictor
 import ekyc.utils.utils as utils
 import cv2 as cv
 import re
 import os
 import torch
+import numpy as np
+import ultralytics
+
+from PIL import Image
+from facenet_pytorch import MTCNN
+from ekyc.service.face_check_service.face_matching_service import FaceVerifier
+from ekyc.service.face_check_service.blink_detection import BlinkDetector
+from vietocr.tool.config import Cfg
+from vietocr.tool.predictor import Predictor
 from ekyc.common.functions import get_image
+from io import BytesIO
 
 
 class EKYCService:
 
-    def __init__(self, s3_client: S3Client, user_repository: UserRepository):
-        self.s3_client = s3_client
-        self.user_repository = user_repository
+    def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.detector = MTCNN(device=self.device)
         self.blink_detector = BlinkDetector()
-        self.orientation_detector = FaceOrientationDetector()
         self.verifier = FaceVerifier(device=self.device)
 
         self.CONF_CONTENT_THRESHOLD = 0.7
@@ -47,7 +42,6 @@ class EKYCService:
         self.ocr_detector = Predictor(self.config)
 
     def process_ekyc(self, video_path, cccd_path, max_duration=7):
-        start_time = time.time()
 
         cap = cv.VideoCapture(video_path)
         if not cap.isOpened():
@@ -55,7 +49,7 @@ class EKYCService:
 
         fps = int(cap.get(cv.CAP_PROP_FPS))
         max_frames = fps * max_duration
-        blink_detected = frontal_detected = left_detected = right_detected = False
+        blink_detected = False
         best_face, max_box_area = None, 0
 
         frame_count = 0
@@ -64,7 +58,7 @@ class EKYCService:
             if not ret:
                 break
 
-            if frame_count % 6 != 0:
+            if frame_count % 10 != 0:
                 frame_count += 1
                 continue
 
@@ -75,18 +69,9 @@ class EKYCService:
             if boxes is not None and len(boxes) > 0:
                 x1, y1, x2, y2 = boxes[0].astype(int)
                 box_area = (x2 - x1) * (y2 - y1)
-                lm = landmarks[0]
 
                 if not blink_detected:
                     blink_detected = self.blink_detector.eye_blink(rgb, [x1, y1, x2, y2])
-
-                try:
-                    orientation = self.orientation_detector.detect(lm)
-                    frontal_detected |= orientation == "front"
-                    left_detected |= orientation == "left"
-                    right_detected |= orientation == "right"
-                except:
-                    break
 
                 if box_area > max_box_area:
                     scale_x = frame.shape[1] / 640
@@ -96,29 +81,23 @@ class EKYCService:
                     best_face = frame[full_y1:full_y2, full_x1:full_x2]
                     max_box_area = box_area
 
-                if all([blink_detected, frontal_detected, left_detected, right_detected]):
+                if blink_detected:
                     break
             frame_count += 1
 
         cap.release()
-        print(f"[INFO] Liveness & Orientation detection time: {time.time() - start_time:.2f}s")
 
         if not blink_detected:
             return {"success": False, "error": "Eyes detection failed"}
-        if not (frontal_detected and left_detected and right_detected):
-            return {"success": False, "error": "Facial Orientation detection failed"}
         if best_face is None or best_face.size == 0:
             return {"success": False, "error": "Facial detection failed"}
 
         best_face_rgb = cv.cvtColor(best_face, cv.COLOR_BGR2RGB)
         cccd_image = get_image(cccd_path)
-        match_start = time.time()
         match = self.verifier.verify(best_face_rgb, cccd_image)
-        print(f"[INFO] Face verification time: {time.time() - match_start:.2f}s")
 
         return {
             "liveness": blink_detected,
-            "facial_orientation": all([frontal_detected, left_detected, right_detected]),
             "face_matching": bool(match)
         }
 
@@ -127,9 +106,8 @@ class EKYCService:
         if image is None:
             return {"success": False, "error": f"Không đọc được ảnh từ {image_path}"}
 
-        # ==== CCCD MỚI: Detect bằng NEW_CONTENT_BACK ====
-        new_results = self.NEW_CONTENT_BACK(image)[0]
-        new_labels_of_interest = ["cdate_of_issue", "cdate_of_expiry", "address_1", "address_2"]
+        # --- Step 1: Model mới ---
+        new_results = self.NEW_CONTENT_BACK(image, verbose=False)[0]
         new_class_names = {
             0: 'Date of expirty', 1: 'Date of issue', 2: 'Place', 3: 'Place of birth',
             4: 'address_1', 5: 'address_2', 6: 'bottom_left', 7: 'bottom_right',
@@ -139,7 +117,7 @@ class EKYCService:
         }
 
         extracted_new = {}
-        valid_new_detections = []
+        found_issue_date = False
 
         for box in new_results.boxes:
             conf = box.conf[0].item()
@@ -148,18 +126,49 @@ class EKYCService:
 
             cls_id = int(box.cls[0].item())
             label = new_class_names.get(cls_id, f"class_{cls_id}")
-            if label in new_labels_of_interest:
-                x1, y1, x2, y2 = map(int, box.xyxy[0])
-                crop = image[y1:y2, x1:x2]
-                crop_rgb = cv.cvtColor(crop, cv.COLOR_BGR2RGB)
-                crop_pil = Image.fromarray(crop_rgb)
-                text = self.ocr_detector.predict(crop_pil).strip()
 
-                if text and len(text) >= 5:
-                    extracted_new[label] = text
-                    valid_new_detections.append(label)
+            x1, y1, x2, y2 = map(int, box.xyxy[0])
+            crop = image[y1:y2, x1:x2]
+            crop_rgb = cv.cvtColor(crop, cv.COLOR_BGR2RGB)
+            crop_pil = Image.fromarray(crop_rgb)
 
-        old_results = self.CONTENT_BACK(image)[0]
+            text = self.ocr_detector.predict(crop_pil).strip()
+            if text and len(text) >= 3:
+                extracted_new[label] = text
+                if label in ['cdate_of_issue', 'Date of issue']:
+                    found_issue_date = True
+
+        # Trích lọc và chuẩn hoá dữ liệu model mới (nếu hợp lệ)
+        if extracted_new and found_issue_date:
+            keys_of_interest = [
+                'address_1',
+                'address_2',
+                'cdate_of_issue',
+                'cdate_of_expiry',
+                'cplace_of_birth'
+            ]
+            simplified_result = {}
+
+            for key in keys_of_interest:
+                raw = extracted_new.get(key, "")
+                if ":" in raw:
+                    simplified_result[key] = raw.split(":", 1)[-1].strip()
+                else:
+                    simplified_result[key] = raw
+
+            return {
+                "success": True,
+                "version": "new",
+                "data": {
+                    "address": simplified_result.get("address_1", "") + " " + simplified_result.get("address_2", ""),
+                    "issue_date": simplified_result.get("cdate_of_issue", ""),
+                    "expiry_date": simplified_result.get("cdate_of_expiry", ""),
+                    "place_of_birth": simplified_result.get("cplace_of_birth", "")
+                }
+            }
+
+        # --- Step 2: fallback sang model cũ ---
+        old_results = self.CONTENT_BACK(image, verbose=False)[0]
         old_class_names = {
             0: 'Issue_date',
             1: 'Issuer',
@@ -168,9 +177,6 @@ class EKYCService:
             4: 'fingerprint'
         }
 
-        detected_old_labels = []
-        issue_date_result = None
-
         for box in old_results.boxes:
             conf = box.conf[0].item()
             if conf < 0.6:
@@ -178,7 +184,6 @@ class EKYCService:
 
             cls_id = int(box.cls[0].item())
             label = old_class_names.get(cls_id, f"class_{cls_id}")
-            detected_old_labels.append(label)
 
             if label == "Issue_date":
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -187,30 +192,32 @@ class EKYCService:
                 crop_pil = Image.fromarray(crop_rgb)
                 text = self.ocr_detector.predict(crop_pil).strip()
                 date_match = re.search(r'(\d{2}[\/\-\.]\d{2}[\/\-\.]\d{4})', text)
-                issue_date_result = date_match.group(1) if date_match else text
-
-
-        if issue_date_result:
-            return issue_date_result
+                issue_date = date_match.group(1) if date_match else text
+                return {
+                    "success": True,
+                    "version": "old",
+                    "data": {
+                        "init_date": issue_date
+                    }
+                }
 
         return {
             "success": False,
-            "error": "Không xác định được loại CCCD (cũ/mới) hoặc không phát hiện được vùng cần thiết."
+            "error": "Không phát hiện được thông tin mặt sau từ cả 2 mô hình (cũ/mới)."
         }
 
-    def process_ocr(self, image_path):
-        t_start = time.time()
+    def detect_corner(self, image_path: str):
+
         img = Image.open(image_path).convert("RGB")
 
-        # Detect corners
         corner_preds = self.CORNER_BACK(image_path).pred[0]
         if corner_preds is None or corner_preds.size(0) < 4:
-            return {"success": False, "error": "Không phát hiện đủ 4 góc."}
+            raise ValueError("Không phát hiện đủ 4 góc.")
 
         corner_boxes = corner_preds[:, :4].tolist()
         corner_classes = corner_preds[:, 5].tolist()
         if len(corner_classes) != 4:
-            return {"success": False, "error": "Không phát hiện đủ 4 góc."}
+            raise ValueError("Không phát hiện đủ 4 góc.")
 
         ordered_boxes = utils.class_Order(corner_boxes, corner_classes)
         center_points = list(map(utils.get_center_point, ordered_boxes))
@@ -222,11 +229,17 @@ class EKYCService:
 
         aligned = utils.four_point_transform(img, np.asarray(center_points))
         aligned_img = Image.fromarray(aligned)
+        return aligned_img
 
-        print(f"[INFO] Alignment time: {time.time() - t_start:.2f}s")
+    def process_ocr(self, image_path):
+        try:
+            aligned_img = self.detect_corner(image_path)
+        except ValueError as e:
+            return {"success": False, "error": str(e)}
 
-        # Content detection
-        t_content = time.time()
+        if isinstance(aligned_img, dict) and aligned_img.get("success") is False:
+            return aligned_img  # Trả lỗi từ detect_corner ra luôn
+
         content_preds = self.CONTENT_MODEL(aligned_img).pred[0]
         if content_preds is None or content_preds.size(0) == 0:
             return {"success": False, "error": "Không phát hiện nội dung."}
@@ -237,10 +250,6 @@ class EKYCService:
         boxes, classes = utils.non_max_suppression_fast(np.array(content_boxes), content_classes, 0.7)
         boxes = utils.class_Order(boxes, classes)
 
-        print(f"[INFO] Content detection time: {time.time() - t_content:.2f}s")
-
-        # OCR các vùng
-        t_ocr = time.time()
         fields = []
         for i, box in enumerate(boxes):
             left, top, right, bottom = map(int, box)
@@ -251,59 +260,18 @@ class EKYCService:
                 text = self.ocr_detector.predict(cropped)
                 fields.append(text)
 
-        print(f"[INFO] OCR time: {time.time() - t_ocr:.2f}s")
+        if 7 in content_classes and len(fields) >= 9:
+            fields = fields[:6] + [fields[6] + ", " + fields[7]] + [fields[8]]
 
-        # Xác định loại CCCD
         version = "unknown"
         if len(fields) >= 7:
             version = "old"
-            field_names = ["idNumber", "fullName", "dob", "gender", "nationality", "birthplace", "address1", "address2"]
-        elif len(fields) == 5:
+            field_names = ["idNumber", "fullName", "dob", "gender", "nationality", "birthplace", "address"]
+        elif len(fields) <= 6:
             version = "new"
-            field_names = ["fullName", "idNumber", "gender", "dob", "nationality"]
+            field_names = ["idNumber", "fullName", "gender", "nationality", "dob"]
         else:
             return {"success": False, "error": f"Không thể xác định phiên bản CCCD. Số field: {fields}"}
 
         result = {k: v for k, v in zip(field_names, fields)}
-        result["success"] = True
-        result["version"] = version
         return result
-
-    def process_storage(self, video_file, front_image, back_image):
-        front_path = self._save_temp_file(front_image, "front.jpg")
-        back_path = self._save_temp_file(back_image, "_back.jpg")
-        video_path = self._save_temp_file(video_file, "_video.mp4")
-
-        url_front = self.s3_client.upload_file("cccd_front.jpg", front_path)
-        url_back = self.s3_client.upload_file("cccd_back.jpg", back_path)
-        url_video = self.s3_client.upload_file("video.mp4", video_path)
-
-        log_result = {
-            "url_cccd_front": url_front,
-            "url_cccd_back": url_back,
-            "url_video": url_video,
-            "rate_success": True,
-            "ocr_result": True,
-            "error_message": "SUCCESS",
-            "log": True
-        }
-        self.user_repository.save_verification(log_result)
-
-        return {"success": True, "status": log_result}
-
-    @staticmethod
-    def _save_temp_file(file_obj, filename):
-        path = os.path.join("/tmp", filename)
-        if hasattr(file_obj, "save"):
-            file_obj.save(path)
-        elif isinstance(file_obj, str) and os.path.exists(file_obj):
-            shutil.copy(file_obj, path)
-        else:
-            raise TypeError(f"Unsupported file object type: {type(file_obj)}")
-        return path
-
-    @staticmethod
-    def _calc_success(result_dict):
-        total = len(result_dict)
-        passed = sum(1 for v in result_dict.values() if v)
-        return round(passed / total, 2)

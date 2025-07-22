@@ -30,12 +30,11 @@ def ekyc_verify(ekyc_service: EKYCService = Provide[Container.ekyc_service]):
     """
         ekyc_check = {
             "liveness": True,
-            "face_orientation": True,
             "face_matching": True
         }
     """
     ocr_data = ekyc_service.process_ocr(tmp_cccd.name)
-    init_date = ekyc_service.process_ocr_back(tmp_cccd_back.name)
+    ocr_back = ekyc_service.process_ocr_back(tmp_cccd_back.name)
     """
         {
             "data": {
@@ -49,12 +48,9 @@ def ekyc_verify(ekyc_service: EKYCService = Provide[Container.ekyc_service]):
             }
         }
     """
-    #
-    # log_result = ekyc_service.process_storage(tmp_video.name, tmp_cccd.name, tmp_cccd_back.name)
 
     return jsonify({
         "results": ekyc_check,
         "ocr": ocr_data,
-        "init_date": init_date,
-        # "log_result": log_result
+        "ocr_back": ocr_back,
     })
